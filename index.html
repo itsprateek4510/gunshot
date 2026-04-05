@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>GTS Mic Node</title>
+<style>
+/* ── Reset ─────────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0;
+  -webkit-tap-highlight-color:transparent;
+  -webkit-touch-callout:none}
+:root{
+  --bg:#060a06;--panel:#0d120d;--panel2:#111911;
+  --green:#00e640;--green2:#00c836;--green-dim:#005520;
+  --red:#ff3333;--red-dim:#3a0000;
+  --yellow:#ffcc00;--blue:#3388ff;
+  --text:#b8d4b8;--text2:#7a9a7a;--text3:#3a5a3a;
+  --border:#1a2e1a;--font:'Courier New',monospace;
+  --glow:0 0 12px #00e64040
+}
+html,body{
+  height:100%;background:var(--bg);color:var(--text);
+  font-family:var(--font);font-size:13px;
+  overflow-x:hidden
+}
+body{
+  display:flex;flex-direction:column;
+  align-items:center;min-height:100vh;
+  padding:16px 16px 32px;gap:12px;
+  background:radial-gradient(ellipse at top,#0a1a0a 0%,var(--bg) 70%)
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+header{
+  text-align:center;width:100%;max-width:360px;
+  padding-top:env(safe-area-inset-top,0)
+}
+.logo{
+  font-size:11px;letter-spacing:3px;color:var(--text3);
+  margin-bottom:4px
+}
+
+/* ── Mic Badge ───────────────────────────────────────────── */
+#badge-wrap{
+  position:relative;width:110px;height:110px;
+  display:flex;align-items:center;justify-content:center
+}
+#badge{
+  width:100px;height:100px;border-radius:50%;
+  border:3px solid var(--text3);
+  display:flex;align-items:center;justify-content:center;
+  font-size:44px;font-weight:bold;
+  color:var(--text3);background:var(--panel);
+  transition:border-color .3s,color .3s,box-shadow .3s;
+  position:relative;z-index:2;
+  user-select:none
+}
+#badge.online{
+  border-color:var(--green);color:var(--green);
+  box-shadow:var(--glow)
+}
+#badge.triggered{
+  border-color:var(--red);color:var(--red);
+  box-shadow:0 0 30px #ff000060;
+  animation:badge-pop .25s ease
+}
+@keyframes badge-pop{
+  0%{transform:scale(1)}
+  50%{transform:scale(1.12)}
+  100%{transform:scale(1)}
+}
+/* Pulsing ring when online */
+#badge-ring{
+  position:absolute;inset:-6px;border-radius:50%;
+  border:2px solid var(--green-dim);opacity:0;
+  animation:ring-pulse 2s ease-in-out infinite
+}
+#badge-ring.active{opacity:1}
+@keyframes ring-pulse{
+  0%{transform:scale(.92);opacity:.8}
+  100%{transform:scale(1.08);opacity:0}
+}
+
+/* ── Mode pill ───────────────────────────────────────────── */
+#mode-pill{
+  font-size:10px;letter-spacing:2px;padding:3px 12px;
+  border-radius:20px;border:1px solid;font-weight:bold;
+  transition:.3s
+}
+#mode-pill.demo{background:#001833;color:var(--blue);border-color:var(--blue)}
+#mode-pill.real{background:var(--red-dim);color:var(--red);border-color:var(--red)}
+
+/* ── Status row ──────────────────────────────────────────── */
+#status-row{
+  display:flex;align-items:center;gap:8px;
+  font-size:11px;color:var(--text2)
+}
+#status-dot{
+  width:9px;height:9px;border-radius:50%;
+  background:#222;border:1px solid #333;transition:.3s;flex-shrink:0
+}
+#status-dot.connecting{background:var(--yellow);animation:blink .8s step-end infinite}
+#status-dot.online{background:var(--green);box-shadow:0 0 6px var(--green)}
+#status-dot.offline{background:var(--red)}
+@keyframes blink{50%{opacity:0}}
+
+/* ── Waveform canvas ─────────────────────────────────────── */
+#wave-wrap{
+  width:100%;max-width:360px;
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:6px;overflow:hidden;position:relative
+}
+canvas#wave{display:block;width:100%;height:72px}
+#wave-label{
+  position:absolute;top:4px;left:8px;
+  font-size:9px;letter-spacing:1px;color:var(--text3)
+}
+#wave-peak{
+  position:absolute;top:4px;right:8px;
+  font-size:9px;color:var(--green)
+}
+
+/* ── Level meter ─────────────────────────────────────────── */
+#level-wrap{width:100%;max-width:360px}
+#level-track{
+  height:10px;background:#0a120a;border:1px solid var(--border);
+  border-radius:5px;overflow:hidden;margin-bottom:4px
+}
+#level-fill{
+  height:100%;width:0%;border-radius:5px;
+  background:linear-gradient(90deg,var(--green-dim),var(--green));
+  transition:width .05s;will-change:width
+}
+#level-fill.hot{background:linear-gradient(90deg,#886600,var(--yellow))}
+#level-fill.peak{background:linear-gradient(90deg,#660000,var(--red))}
+#level-labels{
+  display:flex;justify-content:space-between;
+  font-size:9px;color:var(--text3)
+}
+
+/* ── Stats grid ──────────────────────────────────────────── */
+#stats-grid{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:6px;width:100%;max-width:360px
+}
+.stat-card{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:5px;padding:8px 10px
+}
+.stat-label{font-size:9px;letter-spacing:1px;color:var(--text3);margin-bottom:3px}
+.stat-val{font-size:18px;font-weight:bold;color:var(--text2);line-height:1}
+.stat-val.green{color:var(--green)}
+.stat-val.yellow{color:var(--yellow)}
+.stat-val.red{color:var(--red)}
+
+/* ── Connect button ──────────────────────────────────────── */
+#connect-btn{
+  width:100%;max-width:360px;padding:16px;
+  background:var(--green-dim);color:var(--green);
+  border:2px solid var(--green);border-radius:8px;
+  font-family:var(--font);font-size:14px;letter-spacing:2px;
+  font-weight:bold;cursor:pointer;text-align:center;
+  transition:.2s;box-shadow:0 0 16px #00e64022;
+  -webkit-appearance:none
+}
+#connect-btn:active{transform:scale(.97)}
+#connect-btn.active{
+  background:#001800;color:var(--text3);
+  border-color:var(--text3);box-shadow:none
+}
+#connect-btn.connecting{
+  background:#111100;color:var(--yellow);border-color:var(--yellow);
+  animation:blink .6s step-end infinite
+}
+
+/* ── Event log ───────────────────────────────────────────── */
+#log-wrap{
+  width:100%;max-width:360px;
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:5px;overflow:hidden
+}
+#log-header{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:6px 10px;border-bottom:1px solid var(--border);
+  font-size:9px;letter-spacing:1px;color:var(--text3)
+}
+#log-clear{
+  font-family:var(--font);font-size:9px;
+  background:transparent;border:1px solid var(--border);
+  color:var(--text3);padding:1px 6px;border-radius:2px;cursor:pointer
+}
+#log{max-height:110px;overflow-y:auto;padding:4px 8px}
+.log-line{
+  font-size:10px;padding:2px 0;
+  border-bottom:1px solid #0a140a;line-height:1.5
+}
+.log-line.ok{color:var(--green)}
+.log-line.warn{color:var(--yellow)}
+.log-line.err{color:var(--red)}
+.log-line.info{color:var(--text3)}
+.log-time{color:var(--text3);margin-right:4px}
+
+/* ── Info section ────────────────────────────────────────── */
+#info-section{
+  width:100%;max-width:360px;
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:5px;padding:10px 12px;
+  font-size:10px;color:var(--text3);line-height:1.7
+}
+.info-row{display:flex;justify-content:space-between}
+.info-val{color:var(--text2)}
+
+/* ── Footer ──────────────────────────────────────────────── */
+footer{
+  font-size:9px;color:var(--text3);text-align:center;
+  letter-spacing:1px;line-height:1.8;margin-top:auto
+}
+
+/* ── Trigger flash overlay ───────────────────────────────── */
+#flash{
+  position:fixed;inset:0;pointer-events:none;
+  background:#ff000000;z-index:999;transition:background .1s
+}
+#flash.active{background:#ff000015}
+</style>
+</head>
+<body>
+
+<div id="flash"></div>
+
+<header>
+  <div class="logo">⬡ GTS — ACOUSTIC MIC NODE</div>
+</header>
+
+<!-- Mic badge -->
+<div id="badge-wrap">
+  <div id="badge-ring"></div>
+  <div id="badge">A</div>
+</div>
+
+<!-- Mode + status -->
+<div id="mode-pill" class="demo">◎ DEMO</div>
+
+<div id="status-row">
+  <div id="status-dot"></div>
+  <span id="status-text">Tap Connect to start</span>
+</div>
+
+<!-- Waveform -->
+<div id="wave-wrap">
+  <canvas id="wave" width="360" height="72"></canvas>
+  <span id="wave-label">WAVEFORM</span>
+  <span id="wave-peak">0.000</span>
+</div>
+
+<!-- Level meter -->
+<div id="level-wrap">
+  <div id="level-track"><div id="level-fill"></div></div>
+  <div id="level-labels"><span>0</span><span>LEVEL</span><span>MAX</span></div>
+</div>
+
+<!-- Stats -->
+<div id="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">TRIGGERS</div>
+    <div class="stat-val green" id="stat-triggers">0</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">LATENCY</div>
+    <div class="stat-val yellow" id="stat-latency">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">SAMPLE RATE</div>
+    <div class="stat-val" id="stat-sr">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">SENT CHUNKS</div>
+    <div class="stat-val" id="stat-chunks">0</div>
+  </div>
+</div>
+
+<!-- Connect button -->
+<button id="connect-btn" onclick="handleConnectBtn()">▶ CONNECT MIC</button>
+
+<!-- Log -->
+<div id="log-wrap">
+  <div id="log-header">
+    <span>EVENT LOG</span>
+    <button id="log-clear" onclick="clearLog()">CLR</button>
+  </div>
+  <div id="log"></div>
+</div>
+
+<!-- Info -->
+<div id="info-section">
+  <div class="info-row"><span>Mic ID</span><span class="info-val" id="info-mic">—</span></div>
+  <div class="info-row"><span>Triad</span><span class="info-val" id="info-triad">—</span></div>
+  <div class="info-row"><span>Server</span><span class="info-val" id="info-server">—</span></div>
+  <div class="info-row"><span>Protocol</span><span class="info-val">Binary PCM WebSocket</span></div>
+  <div class="info-row"><span>Chunk</span><span class="info-val">100ms @ 16kHz</span></div>
+  <div class="info-row"><span>Sensitivity</span><span class="info-val" id="info-sens">0.45</span></div>
+</div>
+
+<footer>
+  Keep this screen ON while listening.<br>
+  Stay on the same WiFi as the server.<br>
+  ⬡ GTS v1.0 — TDOA Acoustic System
+</footer>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// CONFIG — read from URL params
+// ═══════════════════════════════════════════════════════
+const P        = new URLSearchParams(location.search);
+const MIC_ID   = P.get('mic')    || 'A';
+const TRIAD_ID = P.get('triad')  || 'triad_1';
+const SERVER   = P.get('server') || location.host;
+const SR_TARGET = 16000;
+const CHUNK_MS  = 100;       // 100ms audio chunks
+const SENSITIVITY = 0.40;    // VAD peak threshold
+
+// Mic colors
+const COLORS = {A:'#33ff88',B:'#3388ff',C:'#ff8833',D:'#dd44ff'};
+const MIC_COLOR = COLORS[MIC_ID] || '#00e640';
+
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+let ws          = null;
+let audioCtx    = null;
+let stream      = null;
+let processor   = null;
+let analyser    = null;
+let connected   = false;
+let connecting  = false;
+let actualSR    = SR_TARGET;
+let triggerCooldown = false;
+let triggerCount    = 0;
+let chunksSent      = 0;
+let pingStart       = 0;
+let latencyMs       = 0;
+let animFrame       = null;
+let waveBuffer      = new Float32Array(360);   // rolling waveform
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+(function init() {
+  document.title = `Mic ${MIC_ID} — GTS`;
+  document.getElementById('badge').textContent = MIC_ID;
+  applyMicColor(MIC_COLOR);
+
+  document.getElementById('info-mic').textContent    = MIC_ID;
+  document.getElementById('info-triad').textContent  = TRIAD_ID;
+  document.getElementById('info-server').textContent = SERVER;
+
+  startWaveformLoop();
+})();
+
+function applyMicColor(c) {
+  const badge = document.getElementById('badge');
+  badge.style.borderColor = c;
+  badge.style.color = c;
+}
+
+// ═══════════════════════════════════════════════════════
+// CONNECT BUTTON
+// ═══════════════════════════════════════════════════════
+function handleConnectBtn() {
+  if (connected || connecting) {
+    disconnect('Manual disconnect');
+  } else {
+    startAudio();
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// AUDIO CAPTURE
+// ═══════════════════════════════════════════════════════
+async function startAudio() {
+  if (connecting) return;
+  connecting = true;
+  setStatus('connecting', 'Requesting microphone...');
+  setBtnState('connecting');
+  log('Requesting microphone permission...', 'info');
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation:   false,
+        noiseSuppression:   false,
+        autoGainControl:    false,
+        channelCount:       1,
+        sampleRate:         { ideal: SR_TARGET, min: 8000, max: 48000 }
+      },
+      video: false
+    });
+
+    // Build AudioContext at 16kHz if browser allows it
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SR_TARGET });
+    } catch(_) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    // Resume if suspended (iOS / Chrome autoplay policy)
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
+
+    actualSR = audioCtx.sampleRate;
+    document.getElementById('stat-sr').textContent = actualSR >= 1000
+      ? (actualSR / 1000).toFixed(1) + 'k'
+      : actualSR;
+    log(`AudioContext: ${actualSR}Hz`, 'info');
+
+    // Source → Analyser (for waveform display)
+    const source = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0;
+    source.connect(analyser);
+
+    // ScriptProcessor for PCM capture
+    // Buffer size = nearest power-of-2 to CHUNK_MS worth of samples
+    const targetBuf = actualSR * CHUNK_MS / 1000;
+    const bufSize = [256,512,1024,2048,4096,8192,16384].reduce((a,b) =>
+      Math.abs(b - targetBuf) < Math.abs(a - targetBuf) ? b : a
+    );
+    processor = audioCtx.createScriptProcessor(bufSize, 1, 1);
+    processor.onaudioprocess = onAudioProcess;
+    source.connect(processor);
+    processor.connect(audioCtx.destination);   // must connect to destination
+
+    log(`Buffer: ${bufSize} samples (${(bufSize/actualSR*1000).toFixed(0)}ms)`, 'info');
+
+    // Connect WebSocket AFTER mic is ready
+    connectWS();
+
+  } catch (err) {
+    connecting = false;
+    const msg = err.name === 'NotAllowedError'
+      ? 'Microphone permission denied. Allow mic in browser settings.'
+      : `Mic error: ${err.message}`;
+    log(msg, 'err');
+    setStatus('offline', msg);
+    setBtnState('idle');
+    alert(msg);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// WEBSOCKET
+// ═══════════════════════════════════════════════════════
+function connectWS() {
+  setStatus('connecting', 'Connecting to server...');
+  log(`WS → ws://${SERVER}/ws/mic/${MIC_ID}/${TRIAD_ID}`, 'info');
+
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${SERVER}/ws/mic/${MIC_ID}/${TRIAD_ID}`);
+
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    connected  = true;
+    connecting = false;
+    log('Connected ✓', 'ok');
+    setStatus('online', `Streaming → ${SERVER}`);
+    setBtnState('active');
+    setBadgeState('online');
+    document.getElementById('badge-ring').classList.add('active');
+    schedulePing();
+  };
+
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'connected') {
+        // NTP-style clock sync
+        const serverTime = msg.server_time_ms;
+        ws.send(JSON.stringify({
+          type: 'sync_reply',
+          server_time_ms: serverTime,
+          client_send_ms: performance.now() + performance.timeOrigin - 30
+        }));
+        log(`Server sync OK`, 'info');
+      } else if (msg.type === 'pong') {
+        latencyMs = Date.now() - pingStart;
+        document.getElementById('stat-latency').textContent = latencyMs + 'ms';
+        document.getElementById('stat-latency').className = 'stat-val ' +
+          (latencyMs < 50 ? 'green' : latencyMs < 150 ? 'yellow' : 'red');
+        schedulePing();
+      } else if (msg.type === 'mode_changed') {
+        updateModePill(msg.mode);
+      }
+    } catch(_) {}
+  };
+
+  ws.onclose = (ev) => {
+    connected  = false;
+    connecting = false;
+    setBadgeState('idle');
+    document.getElementById('badge-ring').classList.remove('active');
+    applyMicColor(MIC_COLOR);
+
+    if (stream) {
+      // Stream still active — auto-reconnect
+      const reason = ev.code === 1000 ? 'Server closed' : `Code ${ev.code}`;
+      log(`Disconnected (${reason}). Reconnecting in 2s...`, 'warn');
+      setStatus('connecting', 'Reconnecting...');
+      setBtnState('connecting');
+      setTimeout(connectWS, 2000);
+    } else {
+      setStatus('offline', 'Disconnected');
+      setBtnState('idle');
+      log('Disconnected', 'warn');
+    }
+  };
+
+  ws.onerror = () => {
+    log('WebSocket error — check server IP and WiFi', 'err');
+  };
+}
+
+function disconnect(reason = '') {
+  if (reason) log(reason, 'warn');
+  // Stop media stream first so WS onclose doesn't auto-reconnect
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (processor) { try { processor.disconnect(); } catch(_){} processor = null; }
+  if (analyser)  { try { analyser.disconnect();  } catch(_){} analyser  = null; }
+  if (audioCtx)  { audioCtx.close().catch(()=>{}); audioCtx = null; }
+  if (ws)        { ws.close(1000, 'client_disconnect'); ws = null; }
+
+  connected = connecting = false;
+  setBadgeState('idle');
+  setBtnState('idle');
+  setStatus('offline', 'Disconnected');
+  document.getElementById('badge-ring').classList.remove('active');
+  document.getElementById('level-fill').style.width = '0%';
+  document.getElementById('wave-peak').textContent = '0.000';
+}
+
+// ═══════════════════════════════════════════════════════
+// AUDIO PROCESSING — called every bufferSize samples
+// ═══════════════════════════════════════════════════════
+function onAudioProcess(ev) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+  const raw = ev.inputBuffer.getChannelData(0);  // Float32Array, range [-1, 1]
+
+  // ── Level calculation ──────────────────────────────────
+  let peak = 0, rmsSum = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const a = Math.abs(raw[i]);
+    if (a > peak) peak = a;
+    rmsSum += raw[i] * raw[i];
+  }
+  const rms = Math.sqrt(rmsSum / raw.length);
+
+  // ── Update rolling waveform buffer (360 pixels wide) ──
+  // Downsample raw to 360 points for display
+  const step = raw.length / 360;
+  for (let px = 0; px < 360; px++) {
+    const idx = Math.floor(px * step);
+    waveBuffer[px] = raw[Math.min(idx, raw.length - 1)];
+  }
+
+  // ── Level meter UI ─────────────────────────────────────
+  const pct = Math.min(peak * 100, 100);
+  const fill = document.getElementById('level-fill');
+  fill.style.width = pct + '%';
+  fill.className = 'level-fill' + (pct > 80 ? ' peak' : pct > 50 ? ' hot' : '');
+  document.getElementById('wave-peak').textContent = peak.toFixed(3);
+
+  // ── VAD: visual trigger flash (phone-side only) ────────
+  if (peak >= SENSITIVITY && !triggerCooldown) {
+    triggerCooldown = true;
+    triggerCount++;
+    document.getElementById('stat-triggers').textContent = triggerCount;
+    flashTrigger();
+    setTimeout(() => { triggerCooldown = false; }, 1200);
+    log(`Peak: ${peak.toFixed(3)} — sending timestamp`, 'ok');
+  }
+
+  // ── Send binary frame to server ────────────────────────
+  // Protocol:
+  //   [0..7]   Float64  client timestamp ms (performance.now + epoch)
+  //   [8..11]  Uint32   actual sample rate
+  //   [12..]   Float32[] PCM samples
+  const buf = new ArrayBuffer(8 + 4 + raw.length * 4);
+  const dv  = new DataView(buf);
+  const clientTs = performance.timeOrigin + performance.now();
+  dv.setFloat64(0, clientTs, true);
+  dv.setUint32(8, actualSR, true);
+  new Float32Array(buf, 12).set(raw);
+
+  try {
+    ws.send(buf);
+    chunksSent++;
+    if (chunksSent % 20 === 0) {   // Update UI every 2s
+      document.getElementById('stat-chunks').textContent = chunksSent;
+    }
+  } catch(_) {
+    // Buffer full — skip frame, don't crash
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// WAVEFORM CANVAS
+// ═══════════════════════════════════════════════════════
+function startWaveformLoop() {
+  const canvas = document.getElementById('wave');
+  const ctx    = canvas.getContext('2d');
+
+  function draw() {
+    const W = canvas.width  = canvas.offsetWidth  || 360;
+    const H = canvas.height = canvas.offsetHeight || 72;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#060a06';
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid lines
+    ctx.strokeStyle = '#0d180d';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, H/2); ctx.lineTo(W, H/2);
+    ctx.stroke();
+
+    if (!connected) {
+      // Idle flat line
+      ctx.strokeStyle = '#1a2e1a';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, H/2); ctx.lineTo(W, H/2);
+      ctx.stroke();
+    } else {
+      // Real waveform
+      const peak = Math.max(...waveBuffer.map(Math.abs), 0.001);
+      const scaleY = (H * 0.44) / Math.max(peak, 0.05);
+      const color  = peak > 0.8 ? '#ff3333' : peak > 0.5 ? '#ffcc00' : MIC_COLOR;
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth   = 1.5;
+      ctx.shadowColor = color;
+      ctx.shadowBlur  = peak > 0.4 ? 6 : 0;
+      ctx.beginPath();
+      const step = waveBuffer.length / W;
+      for (let x = 0; x < W; x++) {
+        const idx = Math.floor(x * step);
+        const y   = H / 2 - waveBuffer[idx] * scaleY;
+        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    animFrame = requestAnimationFrame(draw);
+  }
+
+  draw();
+}
+
+// ═══════════════════════════════════════════════════════
+// PING / LATENCY
+// ═══════════════════════════════════════════════════════
+function schedulePing() {
+  setTimeout(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      pingStart = Date.now();
+      ws.send(JSON.stringify({ type: 'ping' }));
+    }
+  }, 5000);
+}
+
+// ═══════════════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════════════
+function setStatus(cls, txt) {
+  document.getElementById('status-dot').className = cls;
+  document.getElementById('status-text').textContent = txt;
+}
+
+function setBtnState(s) {
+  const btn = document.getElementById('connect-btn');
+  btn.className = s === 'idle' ? '' : s === 'connecting' ? 'connecting' : 'active';
+  btn.textContent = s === 'idle' ? '▶ CONNECT MIC'
+    : s === 'connecting' ? '◌ CONNECTING...'
+    : '■ DISCONNECT';
+}
+
+function setBadgeState(s) {
+  const badge = document.getElementById('badge');
+  badge.className = s;
+  if (s === 'online') {
+    badge.style.borderColor = MIC_COLOR;
+    badge.style.color = MIC_COLOR;
+    badge.style.boxShadow = `0 0 20px ${MIC_COLOR}40`;
+  } else if (s === 'triggered') {
+    badge.style.borderColor = '#ff3333';
+    badge.style.color = '#ff3333';
+    badge.style.boxShadow = '0 0 30px #ff000060';
+  } else {
+    badge.style.borderColor = '';
+    badge.style.color = '';
+    badge.style.boxShadow = '';
+  }
+}
+
+function flashTrigger() {
+  // Badge flash
+  setBadgeState('triggered');
+  setTimeout(() => setBadgeState(connected ? 'online' : 'idle'), 500);
+
+  // Full-screen red flash
+  const fl = document.getElementById('flash');
+  fl.classList.add('active');
+  setTimeout(() => fl.classList.remove('active'), 200);
+}
+
+function updateModePill(mode) {
+  const pill = document.getElementById('mode-pill');
+  if (mode === 'demo') {
+    pill.className = 'demo';
+    pill.textContent = '◎ DEMO — CLAP';
+  } else {
+    pill.className = 'real';
+    pill.textContent = '⬡ REAL — GUNSHOT';
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// LOG
+// ═══════════════════════════════════════════════════════
+function log(msg, cls = 'info') {
+  const el  = document.getElementById('log');
+  const now = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  const div = document.createElement('div');
+  div.className = 'log-line ' + cls;
+  div.innerHTML = `<span class="log-time">${now}</span>${msg}`;
+  el.insertBefore(div, el.firstChild);
+  while (el.children.length > 60) el.removeChild(el.lastChild);
+}
+
+function clearLog() {
+  document.getElementById('log').innerHTML = '';
+}
+
+// ═══════════════════════════════════════════════════════
+// SCREEN WAKE LOCK (keep screen on while streaming)
+// ═══════════════════════════════════════════════════════
+let wakeLock = null;
+async function requestWakeLock() {
+  if ('wakeLock' in navigator) {
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      log('Screen wake lock active', 'info');
+    } catch (_) {}
+  }
+}
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && connected) {
+    await requestWakeLock();
+  }
+});
+document.getElementById('connect-btn').addEventListener('click', requestWakeLock, { once: true });
+
+// ═══════════════════════════════════════════════════════
+// iOS AudioContext unlock
+// ═══════════════════════════════════════════════════════
+document.addEventListener('touchend', function unlockAudio() {
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}, { passive: true });
+</script>
+</body>
+</html>

@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GUNSHOT TRIANGULATION SYSTEM v1.0</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+/* ── Reset & Base ──────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#060a06;--panel:#0d120d;--panel2:#111911;
+  --border:#1a2e1a;--border2:#223322;
+  --green:#00e640;--green2:#00c836;--green-dim:#005520;
+  --red:#ff3333;--red-dim:#3a0000;
+  --yellow:#ffcc00;--orange:#ff7700;
+  --text:#b8d4b8;--text2:#7a9a7a;--text3:#3a5a3a;
+  --font:'Courier New',monospace;
+  --glow:0 0 8px #00e64044;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font);font-size:12px}
+::-webkit-scrollbar{width:4px;background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--green-dim);border-radius:2px}
+
+/* ── Layout ──────────────────────────────────────────────── */
+#app{display:flex;flex-direction:column;height:100vh}
+#header{
+  background:var(--panel);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:6px 16px;height:46px;flex-shrink:0;
+  box-shadow:0 2px 12px #000a;
+}
+#body{display:flex;flex:1;overflow:hidden}
+#left-panel{
+  width:260px;flex-shrink:0;background:var(--panel);
+  border-right:1px solid var(--border);overflow-y:auto;
+  display:flex;flex-direction:column;gap:0
+}
+#map-wrap{flex:1;position:relative;min-width:0}
+#map{width:100%;height:100%}
+#right-panel{
+  width:320px;flex-shrink:0;background:var(--panel);
+  border-left:1px solid var(--border);overflow-y:auto;
+  display:flex;flex-direction:column
+}
+#footer{
+  height:30px;flex-shrink:0;background:var(--panel);
+  border-top:1px solid var(--border);
+  display:flex;align-items:center;gap:24px;padding:0 16px;
+  font-size:11px;color:var(--text2)
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+.logo{
+  font-size:14px;font-weight:bold;color:var(--green);letter-spacing:2px;
+  text-shadow:var(--glow)
+}
+.logo span{color:var(--text2);font-size:11px;margin-left:8px;letter-spacing:1px}
+#header-right{display:flex;align-items:center;gap:16px}
+#ws-badge{
+  display:flex;align-items:center;gap:5px;font-size:11px;
+  padding:3px 8px;border-radius:3px;border:1px solid var(--border)
+}
+#ws-dot{width:8px;height:8px;border-radius:50%;background:#333;transition:.3s}
+#ws-badge.online #ws-dot{background:var(--green);box-shadow:0 0 6px var(--green)}
+#ws-badge.online #ws-text{color:var(--green)}
+#sys-time{color:var(--text2);font-size:11px;min-width:80px;text-align:right}
+#clf-badge{
+  font-size:10px;padding:2px 7px;border-radius:3px;
+  background:var(--red-dim);color:#ff6666;border:1px solid var(--red-dim)
+}
+#clf-badge.ok{background:#001a00;color:var(--green);border-color:var(--green-dim)}
+
+/* ── Section ─────────────────────────────────────────────── */
+.section{border-bottom:1px solid var(--border);padding:10px}
+.section-title{
+  font-size:10px;letter-spacing:2px;color:var(--text2);
+  text-transform:uppercase;margin-bottom:8px;
+  display:flex;align-items:center;justify-content:space-between
+}
+.section-title .dot{width:6px;height:6px;border-radius:50%;background:var(--green-dim);margin-right:6px;display:inline-block}
+
+/* ── Mode Toggle ────────────────────────────────────────── */
+#mode-toggle-wrap{display:flex;align-items:center;gap:0;background:var(--bg);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
+.mode-btn{
+  flex:1;padding:6px 8px;text-align:center;cursor:pointer;
+  font-family:var(--font);font-size:11px;letter-spacing:1px;
+  color:var(--text3);border:none;background:transparent;transition:.2s
+}
+.mode-btn.active-demo{background:#001833;color:#33aaff;border-right:1px solid var(--border)}
+.mode-btn.active-real{background:#1a0000;color:var(--red)}
+.mode-hint{font-size:10px;color:var(--text3);margin-top:4px;line-height:1.4}
+
+/* ── System Toggle ───────────────────────────────────────── */
+#sys-toggle-row{display:flex;align-items:center;justify-content:space-between;padding:4px 0}
+.toggle-switch{position:relative;display:inline-block;width:40px;height:20px;cursor:pointer}
+.toggle-switch input{opacity:0;width:0;height:0}
+.toggle-slider{
+  position:absolute;inset:0;background:#1a1a1a;border-radius:20px;
+  border:1px solid var(--border);transition:.3s
+}
+.toggle-slider:before{
+  content:'';position:absolute;height:14px;width:14px;
+  left:2px;bottom:2px;background:#333;border-radius:50%;transition:.3s
+}
+input:checked+.toggle-slider{background:var(--green-dim);border-color:var(--green)}
+input:checked+.toggle-slider:before{transform:translateX(20px);background:var(--green)}
+.toggle-label{font-size:11px;color:var(--text2)}
+
+/* ── Sensitivity ─────────────────────────────────────────── */
+#sens-row{display:flex;align-items:center;gap:8px}
+#sens-slider{
+  flex:1;height:3px;-webkit-appearance:none;appearance:none;
+  background:var(--border);border-radius:3px;outline:none;cursor:pointer
+}
+#sens-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:12px;height:12px;
+  background:var(--green);border-radius:50%;cursor:pointer
+}
+#sens-val{min-width:28px;text-align:right;color:var(--green);font-size:11px}
+
+/* ── Triads ──────────────────────────────────────────────── */
+#triads-list{display:flex;flex-direction:column;gap:6px}
+.triad-card{
+  background:var(--bg);border:1px solid var(--border);border-radius:4px;
+  overflow:hidden
+}
+.triad-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:6px 8px;cursor:pointer;background:var(--panel2)
+}
+.triad-name{font-size:11px;color:var(--green);font-weight:bold}
+.triad-body{padding:6px 8px;display:flex;flex-direction:column;gap:4px}
+.mic-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:3px 6px;border-radius:3px;background:var(--panel);
+  border:1px solid var(--border)
+}
+.mic-id{font-size:12px;font-weight:bold;min-width:20px}
+.mic-id.A{color:#33ff88}
+.mic-id.B{color:#3388ff}
+.mic-id.C{color:#ff8833}
+.mic-id.D{color:#dd44ff}
+.mic-status{
+  width:7px;height:7px;border-radius:50%;background:#1a1a1a;
+  border:1px solid var(--border);transition:.4s
+}
+.mic-status.online{background:var(--green);box-shadow:0 0 5px var(--green)}
+.mic-status.triggered{background:var(--red);box-shadow:0 0 8px var(--red)}
+.level-bar-wrap{flex:1;height:4px;background:var(--bg);border-radius:2px;margin:0 6px;overflow:hidden}
+.level-bar{height:100%;width:0%;background:var(--green);border-radius:2px;transition:.05s}
+.level-bar.hot{background:var(--yellow)}
+.level-bar.trigger{background:var(--red)}
+.mic-coords{font-size:9px;color:var(--text3)}
+.btn-sm{
+  font-family:var(--font);font-size:9px;padding:2px 6px;
+  background:var(--bg);border:1px solid var(--border);
+  color:var(--text2);border-radius:2px;cursor:pointer;letter-spacing:1px
+}
+.btn-sm:hover{border-color:var(--green);color:var(--green)}
+.btn-danger{border-color:var(--red-dim);color:#ff4444}
+.btn-danger:hover{border-color:var(--red);background:var(--red-dim)}
+
+/* ── Add Triad Form ──────────────────────────────────────── */
+#add-triad-form{
+  background:var(--bg);border:1px solid var(--border);border-radius:4px;
+  padding:8px;margin-top:6px;display:none;flex-direction:column;gap:5px
+}
+#add-triad-form.show{display:flex}
+.form-row{display:flex;gap:5px;align-items:center}
+.inp{
+  font-family:var(--font);font-size:11px;background:var(--panel);
+  border:1px solid var(--border);color:var(--text);padding:3px 6px;
+  border-radius:3px;outline:none;flex:1
+}
+.inp:focus{border-color:var(--green);box-shadow:0 0 4px var(--green-dim)}
+.btn{
+  font-family:var(--font);font-size:11px;padding:4px 10px;
+  border-radius:3px;cursor:pointer;letter-spacing:1px;
+  background:var(--green-dim);color:var(--green);border:1px solid var(--green);
+  transition:.2s
+}
+.btn:hover{background:var(--green);color:#000}
+.btn.red{background:var(--red-dim);color:var(--red);border-color:var(--red)}
+.btn.red:hover{background:var(--red);color:#fff}
+
+/* ── Phone URL section ───────────────────────────────────── */
+#phone-url{
+  font-size:10px;background:var(--bg);border:1px solid var(--border);
+  border-radius:3px;padding:5px 8px;word-break:break-all;
+  color:var(--yellow);margin-top:4px;cursor:pointer;
+}
+#phone-url:hover{border-color:var(--yellow)}
+
+/* ── Map toolbar ─────────────────────────────────────────── */
+#map-toolbar{
+  position:absolute;top:10px;left:10px;z-index:1000;
+  display:flex;flex-direction:column;gap:5px
+}
+.map-btn{
+  font-family:var(--font);font-size:11px;padding:6px 10px;
+  background:#0d120d;border:1px solid var(--border);color:var(--text2);
+  border-radius:3px;cursor:pointer;letter-spacing:1px;
+  box-shadow:0 2px 8px #000a;white-space:nowrap
+}
+.map-btn:hover{border-color:var(--green);color:var(--green)}
+.map-btn.active{background:var(--green-dim);border-color:var(--green);color:var(--green)}
+#map-mode-label{
+  position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+  z-index:1000;font-family:var(--font);font-size:11px;
+  padding:4px 12px;background:#0d120d;border:1px solid var(--border);
+  border-radius:3px;color:var(--text2);pointer-events:none;
+  box-shadow:0 2px 8px #000a
+}
+#sim-btn{
+  position:absolute;bottom:10px;right:10px;z-index:1000;
+  font-family:var(--font);font-size:12px;padding:8px 16px;
+  background:var(--red-dim);border:1px solid var(--red);color:var(--red);
+  border-radius:3px;cursor:pointer;letter-spacing:1px;
+  box-shadow:0 2px 12px #ff000033;transition:.2s
+}
+#sim-btn:hover{background:var(--red);color:#fff;box-shadow:0 2px 16px #ff000066}
+
+/* ── Alerts ──────────────────────────────────────────────── */
+#alert-overlay{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  z-index:2000;background:var(--red-dim);border:2px solid var(--red);
+  color:var(--red);font-size:24px;font-weight:bold;letter-spacing:3px;
+  padding:16px 32px;border-radius:4px;pointer-events:none;
+  display:none;text-align:center;
+  animation:pulse-alert 0.8s ease-in-out infinite;
+  box-shadow:0 0 40px #ff000055
+}
+@keyframes pulse-alert{0%,100%{opacity:1}50%{opacity:.5}}
+#alert-info{font-size:12px;letter-spacing:1px;margin-top:6px;color:#ffaaaa}
+
+/* ── Right panel sections ────────────────────────────────── */
+#right-panel .section{flex-shrink:0}
+.detection-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:3px 7px;border-radius:3px;font-size:10px;
+  background:var(--red-dim);color:var(--red);
+  border:1px solid var(--red-dim);animation:flash-badge .4s ease 3
+}
+@keyframes flash-badge{0%,100%{opacity:1}50%{opacity:.2}}
+
+/* ── Classifier panel ────────────────────────────────────── */
+#clf-panel{min-height:80px}
+.clf-source{font-size:10px;color:var(--text3);margin-bottom:6px}
+.clf-bar-row{margin-bottom:4px}
+.clf-bar-label{
+  display:flex;justify-content:space-between;
+  font-size:10px;color:var(--text2);margin-bottom:2px
+}
+.clf-bar-outer{height:5px;background:var(--bg);border-radius:3px;overflow:hidden}
+.clf-bar-inner{height:100%;border-radius:3px;transition:.3s;background:var(--green-dim)}
+.clf-bar-inner.target{background:var(--green);box-shadow:0 0 6px var(--green)}
+.clf-bar-inner.hot{background:var(--yellow)}
+.clf-physics{
+  margin-top:6px;padding:5px;background:var(--bg);
+  border-radius:3px;border:1px solid var(--border);
+  font-size:10px;color:var(--text2)
+}
+.clf-physics .phys-row{
+  display:flex;justify-content:space-between;margin-bottom:2px
+}
+.phys-ok{color:var(--green)}.phys-fail{color:var(--red)}
+
+/* ── TDOA panel ──────────────────────────────────────────── */
+#tdoa-canvas-wrap{
+  background:var(--bg);border:1px solid var(--border);border-radius:3px;
+  margin-top:6px;padding:4px
+}
+canvas#tdoa-canvas{display:block;width:100%;height:120px}
+.tdoa-pair{
+  display:flex;justify-content:space-between;
+  font-size:10px;color:var(--text2);padding:2px 0;
+  border-bottom:1px solid var(--border)
+}
+.tdoa-val{color:var(--green)}
+
+/* ── Detection log ───────────────────────────────────────── */
+#det-log{max-height:280px;overflow-y:auto}
+.det-item{
+  padding:6px;border-bottom:1px solid var(--border);
+  cursor:pointer;transition:.15s;
+}
+.det-item:hover{background:var(--panel2)}
+.det-item.new{animation:flash-item .6s ease}
+@keyframes flash-item{0%{background:#0a2a0a}100%{background:transparent}}
+.det-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
+.det-mode{font-size:9px;padding:1px 4px;border-radius:2px;font-weight:bold}
+.det-mode.demo{background:#001833;color:#33aaff}
+.det-mode.real{background:var(--red-dim);color:var(--red)}
+.det-time{font-size:9px;color:var(--text3)}
+.det-class{font-size:11px;color:var(--green);font-weight:bold}
+.det-coords{font-size:10px;color:var(--text2)}
+.det-conf{font-size:10px}
+.conf-high{color:var(--green)}.conf-med{color:var(--yellow)}.conf-low{color:var(--red)}
+
+/* ── Mic placement modal ─────────────────────────────────── */
+#mic-modal{
+  display:none;position:absolute;z-index:3000;
+  background:var(--panel);border:1px solid var(--green);border-radius:4px;
+  padding:12px;min-width:200px;box-shadow:0 4px 20px #00e64033
+}
+#mic-modal.show{display:block}
+#mic-modal-title{font-size:11px;color:var(--green);margin-bottom:8px;letter-spacing:1px}
+.modal-row{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+.modal-row label{font-size:10px;color:var(--text2);min-width:40px}
+select.inp{cursor:pointer}
+
+/* ── Map custom icons ─────────────────────────────────────── */
+.mic-icon{
+  width:26px;height:26px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-weight:bold;font-size:11px;font-family:var(--font);
+  border:2px solid;cursor:move;
+}
+.detect-pulse{
+  border-radius:50%;animation:pulse-ring 1.5s ease-out infinite
+}
+@keyframes pulse-ring{
+  0%{transform:scale(.5);opacity:1}
+  100%{transform:scale(2.5);opacity:0}
+}
+
+/* ── Misc ─────────────────────────────────────────────────── */
+.row{display:flex;align-items:center;gap:6px}
+.grow{flex:1}
+.mt4{margin-top:4px}
+.txt-green{color:var(--green)}
+.txt-red{color:var(--red)}
+.txt-yellow{color:var(--yellow)}
+.txt-dim{color:var(--text3)}
+hr.sep{border:none;border-top:1px solid var(--border);margin:6px 0}
+#stat-sep{width:1px;height:16px;background:var(--border)}
+.blink{animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ── HEADER ─────────────────────────────────────────────── -->
+<header id="header">
+  <div class="logo">⬡ GTS <span>GUNSHOT TRIANGULATION SYSTEM v1.0</span></div>
+  <div id="header-right">
+    <span id="clf-badge">YAMNet Loading...</span>
+    <div id="ws-badge"><div id="ws-dot"></div><span id="ws-text">CONNECTING</span></div>
+    <div id="sys-time">00:00:00</div>
+  </div>
+</header>
+
+<!-- ── BODY ───────────────────────────────────────────────── -->
+<div id="body">
+
+<!-- ── LEFT PANEL ────────────────────────────────────────── -->
+<div id="left-panel">
+
+  <!-- System Control -->
+  <div class="section">
+    <div class="section-title"><span><span class="dot"></span>SYSTEM CONTROL</span></div>
+    <div id="sys-toggle-row">
+      <span class="toggle-label">System Active</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="sys-toggle" checked onchange="sendSysToggle()">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <hr class="sep">
+    <div class="section-title" style="margin-top:4px"><span><span class="dot"></span>DETECTION MODE</span></div>
+    <div id="mode-toggle-wrap">
+      <button class="mode-btn active-demo" id="btn-demo" onclick="setMode('demo')">◎ DEMO<br><span style="font-size:9px">CLAP</span></button>
+      <button class="mode-btn" id="btn-real" onclick="setMode('real')">⬡ REAL<br><span style="font-size:9px">GUNSHOT</span></button>
+    </div>
+    <div class="mode-hint" id="mode-hint">Demo mode: clap to trigger. Same TDOA algorithm as production.</div>
+    <hr class="sep">
+    <div class="section-title"><span><span class="dot"></span>SENSITIVITY</span></div>
+    <div id="sens-row">
+      <input type="range" id="sens-slider" min="10" max="90" value="45" oninput="onSensChange(this.value)">
+      <span id="sens-val">45</span>
+    </div>
+    <div class="txt-dim" style="font-size:9px;margin-top:3px">Peak amplitude threshold (0–100). Lower = more sensitive.</div>
+  </div>
+
+  <!-- Server/Phone connection -->
+  <div class="section">
+    <div class="section-title"><span><span class="dot"></span>PHONE CONNECTION</span></div>
+    <div style="font-size:10px;color:var(--text2)">Open on phone browser:</div>
+    <div id="phone-url" onclick="copyPhoneUrl()" title="Click to copy">Loading...</div>
+    <div style="font-size:9px;color:var(--text3);margin-top:3px">Replace A/triad_1 with your mic ID</div>
+    <div class="mt4" style="font-size:10px;color:var(--text2)">QR: <span id="qr-hint" style="color:var(--text3)">visit URL above on phone</span></div>
+  </div>
+
+  <!-- Triads & Mics -->
+  <div class="section" style="flex:1">
+    <div class="section-title">
+      <span><span class="dot"></span>TRIADS & MICROPHONES</span>
+      <button class="btn-sm" onclick="toggleAddTriad()">+ ADD TRIAD</button>
+    </div>
+    <div id="triads-list"></div>
+    <div id="add-triad-form">
+      <div class="form-row">
+        <input class="inp" id="new-triad-id" placeholder="triad_id (e.g. triad_2)" style="width:100%">
+      </div>
+      <div class="form-row">
+        <input class="inp" id="new-triad-name" placeholder="Name (e.g. North Gate)">
+      </div>
+      <div class="form-row">
+        <button class="btn" onclick="submitAddTriad()">CREATE</button>
+        <button class="btn red" onclick="toggleAddTriad()">CANCEL</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="section">
+    <div class="section-title"><span><span class="dot"></span>SESSION STATS</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+      <div><div class="txt-dim" style="font-size:9px">DETECTIONS</div><div class="txt-green" id="stat-det" style="font-size:16px;font-weight:bold">0</div></div>
+      <div><div class="txt-dim" style="font-size:9px">TRIGGERS</div><div style="color:var(--yellow);font-size:16px;font-weight:bold" id="stat-trig">0</div></div>
+      <div><div class="txt-dim" style="font-size:9px">MICS ONLINE</div><div class="txt-green" id="stat-mics" style="font-size:16px;font-weight:bold">0</div></div>
+      <div><div class="txt-dim" style="font-size:9px">UPTIME</div><div class="txt-dim" id="stat-uptime" style="font-size:11px;font-weight:bold">00:00</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── MAP ────────────────────────────────────────────────── -->
+<div id="map-wrap">
+  <div id="map"></div>
+
+  <!-- Map toolbar -->
+  <div id="map-toolbar">
+    <button class="map-btn" id="btn-place-mic" onclick="toggleMicPlaceMode()">📍 Place Mic</button>
+    <button class="map-btn" onclick="clearDetectionMarkers()">✕ Clear Detections</button>
+    <button class="map-btn" onclick="fitMapToMics()">⊡ Fit View</button>
+    <button class="map-btn" onclick="toggleTiles()">🗺 Toggle Map</button>
+  </div>
+
+  <!-- Mode label -->
+  <div id="map-mode-label">
+    MODE: <span id="map-mode-text">◎ DEMO — CLAP DETECTION</span>
+  </div>
+
+  <!-- Simulate button -->
+  <button id="sim-btn" onclick="simulateShot()">⬡ SIMULATE SHOT</button>
+
+  <!-- Alert overlay -->
+  <div id="alert-overlay">
+    ⚠ DETECTION ⚠
+    <div id="alert-info"></div>
+  </div>
+</div>
+
+<!-- ── RIGHT PANEL ────────────────────────────────────────── -->
+<div id="right-panel">
+
+  <!-- Live classifier output -->
+  <div class="section" id="clf-panel">
+    <div class="section-title"><span><span class="dot"></span>LIVE CLASSIFIER</span></div>
+    <div class="clf-source" id="clf-source">Waiting for audio...</div>
+    <div id="clf-bars"></div>
+    <div id="clf-physics-panel"></div>
+  </div>
+
+  <!-- TDOA details -->
+  <div class="section">
+    <div class="section-title"><span><span class="dot"></span>TDOA DETAILS</span></div>
+    <div id="tdoa-pairs">
+      <div class="txt-dim" style="font-size:10px">No detection yet</div>
+    </div>
+    <div id="tdoa-canvas-wrap">
+      <canvas id="tdoa-canvas" width="280" height="120"></canvas>
+    </div>
+    <div id="tdoa-extra" style="font-size:10px;color:var(--text2);margin-top:4px"></div>
+  </div>
+
+  <!-- Detection log -->
+  <div class="section" style="flex:1">
+    <div class="section-title">
+      <span><span class="dot"></span>DETECTION LOG</span>
+      <div style="display:flex;gap:4px">
+        <span id="det-count-badge" style="font-size:10px;color:var(--text3)">0 events</span>
+        <button class="btn-sm" onclick="clearLog()">CLR</button>
+      </div>
+    </div>
+    <div id="det-log"></div>
+  </div>
+</div>
+
+</div><!-- /#body -->
+
+<!-- ── FOOTER ─────────────────────────────────────────────── -->
+<footer id="footer">
+  <span>● DETECTIONS: <b id="foot-det" class="txt-green">0</b></span>
+  <div id="stat-sep"></div>
+  <span>MODE: <b id="foot-mode" class="txt-green">DEMO</b></span>
+  <div id="stat-sep"></div>
+  <span>SERVER: <b id="foot-ip" class="txt-dim">—</b></span>
+  <div id="stat-sep"></div>
+  <span id="foot-clf">CLASSIFIER: <b class="txt-red">FALLBACK</b></span>
+  <div class="grow"></div>
+  <span class="txt-dim blink" id="foot-alert" style="display:none;color:var(--red)">⚠ DETECTION ACTIVE</span>
+  <span class="txt-dim">Sound speed: 343 m/s · TDOA precision: ±34cm @ 1ms</span>
+</footer>
+
+</div><!-- /#app -->
+
+<!-- Mic placement modal -->
+<div id="mic-modal">
+  <div id="mic-modal-title">📍 PLACE MICROPHONE</div>
+  <div class="modal-row">
+    <label>Mic ID</label>
+    <select class="inp" id="modal-mic-id">
+      <option value="A">A</option>
+      <option value="B">B</option>
+      <option value="C">C</option>
+      <option value="D">D</option>
+    </select>
+  </div>
+  <div class="modal-row">
+    <label>Triad</label>
+    <select class="inp" id="modal-triad-id"></select>
+  </div>
+  <div class="modal-row">
+    <label>Lat</label>
+    <span class="txt-green" id="modal-lat" style="font-size:10px">—</span>
+  </div>
+  <div class="modal-row">
+    <label>Lng</label>
+    <span class="txt-green" id="modal-lng" style="font-size:10px">—</span>
+  </div>
+  <div class="modal-row">
+    <label>X (m)</label>
+    <input class="inp" id="modal-x" type="number" value="0" style="width:70px">
+    <label>Y (m)</label>
+    <input class="inp" id="modal-y" type="number" value="0" style="width:70px">
+  </div>
+  <div class="form-row">
+    <button class="btn" onclick="confirmMicPlace()">CONFIRM</button>
+    <button class="btn red" onclick="cancelMicPlace()">CANCEL</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════
+const S = {
+  ws: null, wsReady: false,
+  mode: 'demo',
+  systemActive: true,
+  serverIp: '—',
+  classifierLoaded: false,
+  triads: {},            // {triad_id: {triad_id, name, mics:[]}}
+  connectedMics: new Set(),
+  audioLevels: {},       // {mic_id: {peak, rms}}
+  detections: [],
+  map: null,
+  micMarkers: {},        // {mic_id: L.Marker}
+  detectionMarkers: [],  // array of L.LayerGroup
+  placingMic: false,
+  pendingPlaceLatLng: null,
+  tileLayer: null,
+  tileMode: 0,
+  totalDetections: 0,
+  startTime: Date.now()
+};
+
+// Tile URLs
+const TILES = [
+  ['OSM','https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png','© OpenStreetMap'],
+  ['Satellite','https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}','© Esri'],
+  ['Topo','https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png','© OpenTopoMap']
+];
+
+// Mic colors
+const MIC_COLORS = {A:'#33ff88',B:'#3388ff',C:'#ff8833',D:'#dd44ff'};
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  initMap();
+  connectWS();
+  startClock();
+  setInterval(updateStats, 2000);
+});
+
+// ═══════════════════════════════════════════════════════════
+// WEBSOCKET
+// ═══════════════════════════════════════════════════════════
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  S.ws = new WebSocket(`${proto}//${location.host}/ws/dashboard`);
+  S.ws.onopen = () => {
+    S.wsReady = true;
+    setBadge('online','● ONLINE');
+  };
+  S.ws.onclose = () => {
+    S.wsReady = false;
+    setBadge('offline','○ OFFLINE');
+    setTimeout(connectWS, 3000);
+  };
+  S.ws.onerror = () => {};
+  S.ws.onmessage = e => handleMsg(JSON.parse(e.data));
+}
+function send(obj){ if(S.wsReady) S.ws.send(JSON.stringify(obj)); }
+function setBadge(cls,txt){
+  const b=document.getElementById('ws-badge');
+  b.className='ws-badge '+cls;
+  document.getElementById('ws-text').textContent=txt;
+}
+
+// ═══════════════════════════════════════════════════════════
+// MESSAGE HANDLER
+// ═══════════════════════════════════════════════════════════
+function handleMsg(msg) {
+  switch(msg.type) {
+    case 'init':            onInit(msg); break;
+    case 'detection':       onDetection(msg); break;
+    case 'mic_connected':   onMicConnected(msg); break;
+    case 'mic_disconnected':onMicDisconnected(msg); break;
+    case 'audio_level':     onAudioLevel(msg); break;
+    case 'classification':  onClassification(msg); break;
+    case 'mode_changed':    onModeChanged(msg.mode); break;
+    case 'system_toggled':  onSystemToggled(msg.active); break;
+    case 'triad_added':     S.triads[msg.triad.triad_id]=msg.triad; renderTriads(); break;
+    case 'triad_removed':   delete S.triads[msg.triad_id]; renderTriads(); renderMicMarkers(); break;
+    case 'classifier_status': onClassifierStatus(msg); break;
+    case 'sensitivity_changed': document.getElementById('sens-slider').value=Math.round(msg.value*100);
+                                document.getElementById('sens-val').textContent=Math.round(msg.value*100); break;
+    case 'log_cleared':     S.detections=[]; renderLog(); break;
+    case 'mic_position_updated': updateMicMarkerPos(msg); break;
+    case 'tdoa_error':      console.warn('TDOA error:',msg.error); break;
+    case 'pong':            break;
+    default: break;
+  }
+}
+
+function onInit(msg) {
+  S.mode = msg.mode;
+  S.systemActive = msg.system_active;
+  S.classifierLoaded = msg.classifier_loaded;
+  S.serverIp = msg.server_ip || location.hostname;
+  S.triads = msg.triads || {};
+  S.connectedMics = new Set(msg.connected_mics || []);
+  if(msg.sensitivity) {
+    const v = Math.round(msg.sensitivity*100);
+    document.getElementById('sens-slider').value = v;
+    document.getElementById('sens-val').textContent = v;
+  }
+  if(msg.detections) { S.detections = msg.detections.slice(-100); }
+
+  updateModeUI();
+  updateSystemUI();
+  renderTriads();
+  renderMicMarkers();
+  renderLog();
+  updatePhoneUrl();
+  updateClassifierBadge();
+
+  document.getElementById('sys-toggle').checked = S.systemActive;
+  document.getElementById('foot-ip').textContent = S.serverIp;
+}
+
+// ═══════════════════════════════════════════════════════════
+// DETECTION HANDLING
+// ═══════════════════════════════════════════════════════════
+function onDetection(d) {
+  S.totalDetections++;
+  S.detections.unshift(d);
+  if(S.detections.length > 200) S.detections.pop();
+
+  // Map marker
+  addDetectionMarker(d);
+
+  // Alert overlay
+  showAlert(d);
+
+  // TDOA display
+  renderTdoa(d);
+
+  // Log
+  renderLog();
+
+  // Stats
+  document.getElementById('stat-det').textContent = S.totalDetections;
+  document.getElementById('foot-det').textContent = S.totalDetections;
+  document.getElementById('det-count-badge').textContent = S.detections.length+' events';
+}
+
+function addDetectionMarker(d) {
+  const lat = d.shooter_lat, lng = d.shooter_lng;
+  const conf = d.confidence;
+  const isReal = d.mode === 'real';
+
+  // Pulsing circle
+  const radius = d.tdoa_details ? d.tdoa_details.position_error_m || 34 : 34;
+  const circle = L.circle([lat,lng], {
+    radius: Math.max(radius, 5),
+    color: isReal ? '#ff3333' : '#33aaff',
+    fillColor: isReal ? '#ff000033' : '#0066ff22',
+    fillOpacity: 0.4, weight:2
+  }).addTo(S.map);
+
+  // Icon marker
+  const icon = L.divIcon({
+    className:'',
+    html:`<div style="
+      width:20px;height:20px;border-radius:50%;
+      background:${isReal?'#ff3333':'#3388ff'};
+      border:2px solid #fff;
+      box-shadow:0 0 ${isReal?'12px #ff0000':'8px #0066ff'};
+      display:flex;align-items:center;justify-content:center;
+      font-size:10px;color:#fff;font-weight:bold;font-family:monospace
+    ">⬡</div>`,
+    iconSize:[20,20], iconAnchor:[10,10]
+  });
+
+  const marker = L.marker([lat,lng], {icon}).addTo(S.map);
+  const time = new Date(d.timestamp).toLocaleTimeString();
+  marker.bindPopup(`
+    <div style="font-family:monospace;font-size:11px;background:#0d120d;color:#b8d4b8;padding:4px">
+      <b style="color:${isReal?'#ff3333':'#33aaff'}">${isReal?'⬡ GUNSHOT':'◎ CLAP'}</b><br>
+      Time: ${time}<br>
+      Class: ${d.sound_class}<br>
+      Conf: <b style="color:#00e640">${d.confidence.toFixed(1)}%</b><br>
+      Pos: (${d.shooter_x.toFixed(1)}m, ${d.shooter_y.toFixed(1)}m)<br>
+      GPS: ${d.shooter_lat.toFixed(6)}, ${d.shooter_lng.toFixed(6)}<br>
+      Triad: ${d.triad_id}
+    </div>
+  `);
+
+  S.detectionMarkers.push(circle);
+  S.detectionMarkers.push(marker);
+
+  // Pan to detection
+  S.map.panTo([lat, lng]);
+}
+
+function showAlert(d) {
+  const el = document.getElementById('alert-overlay');
+  const info = document.getElementById('alert-info');
+  const isReal = d.mode === 'real';
+  el.style.background = isReal ? 'rgba(60,0,0,0.95)' : 'rgba(0,20,50,0.95)';
+  el.style.borderColor = isReal ? '#ff3333' : '#3388ff';
+  el.style.color = isReal ? '#ff3333' : '#33aaff';
+  el.querySelector(':first-child') && (el.childNodes[0].textContent = isReal ? '⚠ GUNSHOT DETECTED ⚠' : '◎ SOUND DETECTED ◎');
+  info.textContent = `${d.sound_class} | ${d.confidence.toFixed(1)}% | (${d.shooter_x.toFixed(1)}m, ${d.shooter_y.toFixed(1)}m)`;
+  el.style.display = 'block';
+  document.getElementById('foot-alert').style.display = 'inline';
+  setTimeout(() => {
+    el.style.display = 'none';
+    document.getElementById('foot-alert').style.display = 'none';
+  }, 4000);
+}
+
+// ═══════════════════════════════════════════════════════════
+// CLASSIFIER DISPLAY
+// ═══════════════════════════════════════════════════════════
+function onClassification(msg) {
+  const r = msg.result;
+  const src = document.getElementById('clf-source');
+  src.textContent = `Mic ${msg.mic_id} (${msg.triad_id}) — ${r.reason || ''}`;
+
+  const bars = document.getElementById('clf-bars');
+  if(!r.top5 || r.top5.length === 0) return;
+
+  const target = S.mode === 'demo'
+    ? ['Clapping','Hands','Tap','Knock','Finger snapping','Slap, smack','clap','fallback']
+    : ['Gunshot','Machine gun','Artillery','Explosion','Firearms','gunshot'];
+
+  bars.innerHTML = r.top5.map(p => {
+    const isT = target.some(t => p.class.toLowerCase().includes(t.toLowerCase()));
+    const pct = Math.min(p.confidence, 100);
+    const col = isT ? (pct>60?'target':'hot') : '';
+    return `<div class="clf-bar-row">
+      <div class="clf-bar-label">
+        <span style="color:${isT?'var(--green)':'var(--text2)'}">${p.class}</span>
+        <span style="color:${isT?'var(--green)':'var(--text3)'}">${pct.toFixed(1)}%</span>
+      </div>
+      <div class="clf-bar-outer">
+        <div class="clf-bar-inner ${col}" style="width:${pct}%"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Physics panel
+  const pp = document.getElementById('clf-physics-panel');
+  if(r.physics && Object.keys(r.physics).length > 0) {
+    const ph = r.physics;
+    pp.innerHTML = `<div class="clf-physics">
+      <div class="phys-row"><span>Rise time:</span> <span class="${ph.rise_time_ms<100?'phys-ok':'phys-fail'}">${ph.rise_time_ms||'—'}ms ${ph.rise_time_ms<100?'✓':'✗'}</span></div>
+      <div class="phys-row"><span>Duration:</span> <span class="${ph.duration_ms<500?'phys-ok':'phys-fail'}">${ph.duration_ms||'—'}ms ${ph.duration_ms<500?'✓':'✗'}</span></div>
+      <div class="phys-row"><span>Peak freq:</span> <span class="phys-ok">${ph.peak_freq_hz||'—'}Hz</span></div>
+      <div class="phys-row"><span>Band ratio:</span> <span class="phys-ok">${ph.band_energy_ratio||'—'}</span></div>
+      <div class="phys-row"><span>Anti-spoof:</span> <span class="${ph.pass?'phys-ok':'phys-fail'}">${ph.pass?'PASS ✓':'FAIL ✗ '+ph.fail_reason}</span></div>
+    </div>`;
+  } else pp.innerHTML = '';
+}
+
+// ═══════════════════════════════════════════════════════════
+// TDOA DISPLAY
+// ═══════════════════════════════════════════════════════════
+function renderTdoa(d) {
+  const td = d.tdoa_details || {};
+  const pairs = td.tdoa_pairs || {};
+
+  // Pairs table
+  const el = document.getElementById('tdoa-pairs');
+  const geom = td.geometry_quality || '—';
+  const geomColor = geom==='GOOD'?'var(--green)':geom==='FAIR'?'var(--yellow)':'var(--red)';
+  let html = `<div class="tdoa-pair"><span>Geometry:</span><span style="color:${geomColor}">${geom} (cond=${td.condition_number||'—'})</span></div>`;
+  html += `<div class="tdoa-pair"><span>Pos error:</span><span class="tdoa-val">±${td.position_error_m||'—'}m</span></div>`;
+  for(const [pair,vals] of Object.entries(pairs)) {
+    html += `<div class="tdoa-pair">
+      <span style="color:var(--text3)">${pair}</span>
+      <span class="tdoa-val">Δt=${vals.dt_ms}ms | Δd=${vals.delta_d_m}m</span>
+    </div>`;
+  }
+  el.innerHTML = html;
+
+  document.getElementById('tdoa-extra').innerHTML =
+    `Ref: ${td.reference_mic||'—'} | Rank: ${td.matrix_rank||'—'}`;
+
+  // Draw hyperbola canvas
+  drawHyperbolas(d);
+}
+
+function drawHyperbolas(d) {
+  const canvas = document.getElementById('tdoa-canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width = canvas.offsetWidth || 280;
+  const H = canvas.height = 120;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#060a06';
+  ctx.fillRect(0,0,W,H);
+
+  const triad = S.triads[d.triad_id];
+  if(!triad) return;
+
+  const mics = triad.mics;
+  if(!mics || mics.length < 3) return;
+
+  // Find bounds
+  const allX = [...mics.map(m=>m.x), d.shooter_x];
+  const allY = [...mics.map(m=>m.y), d.shooter_y];
+  const padding = 15;
+  const xMin = Math.min(...allX)-2, xMax = Math.max(...allX)+2;
+  const yMin = Math.min(...allY)-2, yMax = Math.max(...allY)+2;
+  const scaleX = (W-2*padding)/(xMax-xMin||1);
+  const scaleY = (H-2*padding)/(yMax-yMin||1);
+  const scale = Math.min(scaleX, scaleY);
+  const offX = padding + (W-2*padding - (xMax-xMin)*scale)/2 - xMin*scale;
+  const offY = padding + (H-2*padding - (yMax-yMin)*scale)/2 - yMin*scale;
+  const toC = (x,y) => [offX+x*scale, H-(offY+y*scale)];
+
+  // Draw mic triangle
+  ctx.strokeStyle = '#1a2e1a'; ctx.lineWidth=1;
+  ctx.beginPath();
+  const [ax,ay] = toC(mics[0].x, mics[0].y);
+  ctx.moveTo(ax,ay);
+  for(let i=1;i<mics.length;i++){const[x,y]=toC(mics[i].x,mics[i].y);ctx.lineTo(x,y);}
+  ctx.closePath(); ctx.stroke();
+
+  // Draw mic dots
+  mics.forEach(m => {
+    const [cx,cy] = toC(m.x,m.y);
+    const col = MIC_COLORS[m.mic_id]||'#00e640';
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(cx,cy,5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = col; ctx.font='9px monospace';
+    ctx.fillText(m.mic_id, cx+7, cy+3);
+  });
+
+  // Draw detection point
+  const [dx,dy] = toC(d.shooter_x, d.shooter_y);
+  // Outer glow
+  ctx.fillStyle = d.mode==='real'?'rgba(255,51,51,0.2)':'rgba(51,136,255,0.2)';
+  ctx.beginPath(); ctx.arc(dx,dy,10,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = d.mode==='real'?'#ff3333':'#3388ff';
+  ctx.beginPath(); ctx.arc(dx,dy,5,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font='9px monospace';
+  ctx.fillText(`(${d.shooter_x.toFixed(1)},${d.shooter_y.toFixed(1)})`, dx+7, dy+3);
+}
+
+// ═══════════════════════════════════════════════════════════
+// DETECTION LOG
+// ═══════════════════════════════════════════════════════════
+function renderLog() {
+  const el = document.getElementById('det-log');
+  if(S.detections.length === 0) {
+    el.innerHTML = '<div style="padding:10px;color:var(--text3);font-size:10px">No detections yet</div>';
+    return;
+  }
+  el.innerHTML = S.detections.slice(0,50).map((d,i) => {
+    const t = new Date(d.timestamp).toLocaleTimeString();
+    const conf = d.confidence;
+    const confClass = conf>80?'conf-high':conf>50?'conf-med':'conf-low';
+    const isNew = i===0;
+    return `<div class="det-item${isNew?' new':''}" onclick="focusDetection(${i})">
+      <div class="det-head">
+        <span class="det-mode ${d.mode}">${d.mode.toUpperCase()}</span>
+        <span class="det-time">${t}</span>
+      </div>
+      <div class="det-class">${d.sound_class}</div>
+      <div class="det-coords">(${d.shooter_x.toFixed(1)}m, ${d.shooter_y.toFixed(1)}m) — ${d.triad_id}</div>
+      <div class="det-conf ${confClass}">${conf.toFixed(1)}% confidence</div>
+    </div>`;
+  }).join('');
+}
+
+function focusDetection(i) {
+  const d = S.detections[i];
+  if(d) {
+    S.map.panTo([d.shooter_lat, d.shooter_lng]);
+    renderTdoa(d);
+  }
+}
+
+function clearLog() {
+  send({type:'clear_log'});
+}
+
+// ═══════════════════════════════════════════════════════════
+// MIC CONNECTED/DISCONNECTED
+// ═══════════════════════════════════════════════════════════
+function onMicConnected(msg) {
+  S.connectedMics.add(msg.mic_id);
+  updateMicStatus(msg.mic_id, true);
+  document.getElementById('stat-mics').textContent = S.connectedMics.size;
+}
+function onMicDisconnected(msg) {
+  S.connectedMics.delete(msg.mic_id);
+  updateMicStatus(msg.mic_id, false);
+  document.getElementById('stat-mics').textContent = S.connectedMics.size;
+}
+function updateMicStatus(micId, online) {
+  const dot = document.getElementById(`mic-status-${micId}`);
+  if(dot) dot.className = 'mic-status'+(online?' online':'');
+}
+
+// ═══════════════════════════════════════════════════════════
+// AUDIO LEVELS
+// ═══════════════════════════════════════════════════════════
+function onAudioLevel(msg) {
+  S.audioLevels[msg.mic_id] = {peak: msg.peak, rms: msg.rms};
+  const bar = document.getElementById(`level-${msg.mic_id}`);
+  if(bar) {
+    const pct = Math.min(msg.peak * 100, 100);
+    bar.style.width = pct+'%';
+    bar.className = 'level-bar'+(pct>80?' trigger':pct>50?' hot':'');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// MAP
+// ═══════════════════════════════════════════════════════════
+function initMap() {
+  S.map = L.map('map', {
+    center: [28.6139, 77.2090],
+    zoom: 18,
+    zoomControl: true
+  });
+
+  // Custom dark pane for tiles
+  S.tileLayer = L.tileLayer(TILES[0][1], {
+    attribution: TILES[0][2],
+    opacity: 0.7
+  }).addTo(S.map);
+
+  // Click handler for mic placement
+  S.map.on('click', onMapClick);
+}
+
+function onMapClick(e) {
+  if(!S.placingMic) return;
+  const modal = document.getElementById('mic-modal');
+  S.pendingPlaceLatLng = e.latlng;
+  document.getElementById('modal-lat').textContent = e.latlng.lat.toFixed(6);
+  document.getElementById('modal-lng').textContent = e.latlng.lng.toFixed(6);
+
+  // Populate triad selector
+  const sel = document.getElementById('modal-triad-id');
+  sel.innerHTML = Object.keys(S.triads).map(tid =>
+    `<option value="${tid}">${S.triads[tid].name||tid}</option>`
+  ).join('');
+
+  // Position modal near click
+  const point = S.map.latLngToContainerPoint(e.latlng);
+  const mapRect = document.getElementById('map').getBoundingClientRect();
+  modal.style.left = Math.min(point.x+10, mapRect.width-220)+'px';
+  modal.style.top  = Math.min(point.y+10, mapRect.height-200)+'px';
+  modal.classList.add('show');
+}
+
+function confirmMicPlace() {
+  if(!S.pendingPlaceLatLng) return;
+  const micId   = document.getElementById('modal-mic-id').value;
+  const triadId = document.getElementById('modal-triad-id').value;
+  const lat     = S.pendingPlaceLatLng.lat;
+  const lng     = S.pendingPlaceLatLng.lng;
+  const x       = parseFloat(document.getElementById('modal-x').value)||0;
+  const y       = parseFloat(document.getElementById('modal-y').value)||0;
+
+  send({type:'update_mic_position', mic_id:micId, triad_id:triadId, lat,lng,x,y});
+
+  // Update local triad data
+  if(S.triads[triadId]) {
+    let mic = S.triads[triadId].mics.find(m=>m.mic_id===micId);
+    if(!mic){mic={mic_id:micId};S.triads[triadId].mics.push(mic);}
+    mic.lat=lat;mic.lng=lng;mic.x=x;mic.y=y;
+  }
+
+  cancelMicPlace();
+  renderMicMarkers();
+  renderTriads();
+}
+
+function cancelMicPlace() {
+  document.getElementById('mic-modal').classList.remove('show');
+  S.pendingPlaceLatLng = null;
+}
+
+function toggleMicPlaceMode() {
+  S.placingMic = !S.placingMic;
+  const btn = document.getElementById('btn-place-mic');
+  if(S.placingMic) {
+    btn.classList.add('active');
+    btn.textContent = '✕ Cancel Placing';
+    S.map.getContainer().style.cursor = 'crosshair';
+  } else {
+    btn.classList.remove('active');
+    btn.textContent = '📍 Place Mic';
+    S.map.getContainer().style.cursor = '';
+    cancelMicPlace();
+  }
+}
+
+function renderMicMarkers() {
+  // Remove existing markers
+  Object.values(S.micMarkers).forEach(m => S.map.removeLayer(m));
+  S.micMarkers = {};
+
+  for(const [triadId, triad] of Object.entries(S.triads)) {
+    triad.mics.forEach(mic => {
+      const col = MIC_COLORS[mic.mic_id]||'#00e640';
+      const icon = L.divIcon({
+        className:'',
+        html:`<div class="mic-icon" style="background:#0d120d;border-color:${col};color:${col}">${mic.mic_id}</div>`,
+        iconSize:[26,26], iconAnchor:[13,13]
+      });
+      const marker = L.marker([mic.lat, mic.lng], {icon, draggable:true});
+      marker.bindTooltip(`Mic ${mic.mic_id} (${triadId})<br>x=${mic.x}m y=${mic.y}m`, {
+        className:'leaflet-tooltip',
+        permanent: false
+      });
+
+      marker.on('dragend', (ev) => {
+        const ll = ev.target.getLatLng();
+        send({type:'update_mic_position',mic_id:mic.mic_id,triad_id:triadId,
+               lat:ll.lat,lng:ll.lng,x:mic.x,y:mic.y});
+        if(S.triads[triadId]) {
+          const m2 = S.triads[triadId].mics.find(m=>m.mic_id===mic.mic_id);
+          if(m2){m2.lat=ll.lat;m2.lng=ll.lng;}
+        }
+        renderTriads();
+      });
+
+      marker.addTo(S.map);
+      S.micMarkers[mic.mic_id] = marker;
+    });
+  }
+}
+
+function updateMicMarkerPos(msg) {
+  const marker = S.micMarkers[msg.mic_id];
+  if(marker) marker.setLatLng([msg.lat, msg.lng]);
+}
+
+function clearDetectionMarkers() {
+  S.detectionMarkers.forEach(m => S.map.removeLayer(m));
+  S.detectionMarkers = [];
+}
+
+function fitMapToMics() {
+  const points = [];
+  for(const t of Object.values(S.triads)) {
+    t.mics.forEach(m => points.push([m.lat,m.lng]));
+  }
+  S.detectionMarkers.forEach(m => {
+    if(m.getLatLng) points.push([m.getLatLng().lat,m.getLatLng().lng]);
+  });
+  if(points.length > 0) {
+    S.map.fitBounds(L.latLngBounds(points).pad(0.3));
+  }
+}
+
+function toggleTiles() {
+  S.tileMode = (S.tileMode+1) % TILES.length;
+  S.map.removeLayer(S.tileLayer);
+  S.tileLayer = L.tileLayer(TILES[S.tileMode][1], {
+    attribution: TILES[S.tileMode][2], opacity:0.7
+  }).addTo(S.map);
+}
+
+// ═══════════════════════════════════════════════════════════
+// TRIADS UI
+// ═══════════════════════════════════════════════════════════
+function renderTriads() {
+  const el = document.getElementById('triads-list');
+  if(Object.keys(S.triads).length === 0) {
+    el.innerHTML = '<div style="color:var(--text3);font-size:10px">No triads configured</div>';
+    return;
+  }
+  el.innerHTML = Object.values(S.triads).map(triad => {
+    const micsHtml = triad.mics.map(mic => {
+      const online = S.connectedMics.has(mic.mic_id);
+      const pct = ((S.audioLevels[mic.mic_id]||{}).peak||0)*100;
+      const barCls = pct>80?'trigger':pct>50?'hot':'';
+      return `<div class="mic-row">
+        <span class="mic-id ${mic.mic_id}">${mic.mic_id}</span>
+        <div id="mic-status-${mic.mic_id}" class="mic-status${online?' online':''}"></div>
+        <div class="level-bar-wrap"><div class="level-bar ${barCls}" id="level-${mic.mic_id}" style="width:${pct}%"></div></div>
+        <span class="mic-coords">(${mic.x},${mic.y})m</span>
+      </div>`;
+    }).join('');
+
+    const phoneUrls = (triad.mics.length>0?triad.mics:[{mic_id:'A'},{mic_id:'B'},{mic_id:'C'}]).map(m=>
+      `<div style="font-size:9px;color:var(--text3);margin-top:2px">
+        http://${S.serverIp}:8000/phone?mic=${m.mic_id}&amp;triad=${triad.triad_id}
+      </div>`
+    ).join('');
+
+    return `<div class="triad-card">
+      <div class="triad-header" onclick="this.nextSibling.style.display=this.nextSibling.style.display==='none'?'':'none'">
+        <span class="triad-name">◈ ${triad.name||triad.triad_id}</span>
+        <div style="display:flex;gap:4px">
+          <button class="btn-sm" onclick="event.stopPropagation();removeTriad('${triad.triad_id}')">✕</button>
+        </div>
+      </div>
+      <div class="triad-body">
+        ${micsHtml}
+        <details style="margin-top:4px">
+          <summary style="font-size:9px;color:var(--text3);cursor:pointer">Phone URLs</summary>
+          ${phoneUrls}
+        </details>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function removeTriad(triadId) {
+  if(confirm(`Remove triad ${triadId}?`)) send({type:'remove_triad', triad_id:triadId});
+}
+
+function toggleAddTriad() {
+  document.getElementById('add-triad-form').classList.toggle('show');
+}
+
+function submitAddTriad() {
+  const id = document.getElementById('new-triad-id').value.trim();
+  const name = document.getElementById('new-triad-name').value.trim();
+  if(!id) { alert('Enter a triad ID'); return; }
+
+  const cx = 28.6139 + Math.random()*0.001;
+  const cy = 77.2090 + Math.random()*0.001;
+
+  send({type:'add_triad', triad:{
+    triad_id: id, name: name||id,
+    mics: [
+      {mic_id:'A', lat:cx, lng:cy, x:0, y:0},
+      {mic_id:'B', lat:cx, lng:cy+0.00001, x:1, y:0},
+      {mic_id:'C', lat:cx+0.00001, lng:cy, x:0.5, y:0.866}
+    ]
+  }});
+  toggleAddTriad();
+  document.getElementById('new-triad-id').value='';
+  document.getElementById('new-triad-name').value='';
+}
+
+// ═══════════════════════════════════════════════════════════
+// CONTROLS
+// ═══════════════════════════════════════════════════════════
+function setMode(m) {
+  send({type:'set_mode', mode:m});
+  onModeChanged(m);
+}
+
+function onModeChanged(m) {
+  S.mode = m;
+  updateModeUI();
+}
+
+function updateModeUI() {
+  const isDemo = S.mode === 'demo';
+  document.getElementById('btn-demo').className = 'mode-btn'+(isDemo?' active-demo':'');
+  document.getElementById('btn-real').className = 'mode-btn'+(!isDemo?' active-real':'');
+  document.getElementById('mode-hint').textContent = isDemo
+    ? 'Demo: clap hands to trigger. Same TDOA math as production.'
+    : 'Real: gunshot detection. Anti-spoofing active.';
+  document.getElementById('foot-mode').textContent = isDemo ? 'DEMO' : 'REAL';
+  document.getElementById('foot-mode').style.color = isDemo ? '#33aaff' : 'var(--red)';
+  document.getElementById('map-mode-text').textContent = isDemo
+    ? '◎ DEMO — CLAP DETECTION'
+    : '⬡ REAL — GUNSHOT DETECTION';
+  document.getElementById('map-mode-text').style.color = isDemo ? '#33aaff' : 'var(--red)';
+}
+
+function sendSysToggle() {
+  const active = document.getElementById('sys-toggle').checked;
+  send({type:'toggle_system', active});
+  onSystemToggled(active);
+}
+
+function onSystemToggled(active) {
+  S.systemActive = active;
+}
+
+function onSensChange(val) {
+  document.getElementById('sens-val').textContent = val;
+  send({type:'set_sensitivity', value: val/100});
+}
+
+function simulateShot() {
+  const firstTriad = Object.keys(S.triads)[0];
+  if(!firstTriad) { alert('No triad configured'); return; }
+  send({type:'simulate', triad_id:firstTriad});
+}
+
+// ═══════════════════════════════════════════════════════════
+// CLASSIFIER BADGE
+// ═══════════════════════════════════════════════════════════
+function onClassifierStatus(msg) {
+  S.classifierLoaded = msg.loaded;
+  updateClassifierBadge();
+}
+function updateClassifierBadge() {
+  const el = document.getElementById('clf-badge');
+  const foot = document.getElementById('foot-clf');
+  if(S.classifierLoaded) {
+    el.className = 'ok'; el.textContent = 'YAMNet ✓';
+    foot.innerHTML = 'CLASSIFIER: <b style="color:var(--green)">YAMNet</b>';
+  } else {
+    el.className = ''; el.textContent = 'Fallback Mode';
+    foot.innerHTML = 'CLASSIFIER: <b style="color:var(--yellow)">FALLBACK</b>';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// PHONE URL
+// ═══════════════════════════════════════════════════════════
+function updatePhoneUrl() {
+  const el = document.getElementById('phone-url');
+  el.textContent = `http://${S.serverIp}:8000/phone?mic=A&triad=triad_1`;
+}
+function copyPhoneUrl() {
+  const url = document.getElementById('phone-url').textContent;
+  navigator.clipboard.writeText(url).catch(()=>{});
+  document.getElementById('phone-url').style.borderColor='var(--green)';
+  setTimeout(()=>document.getElementById('phone-url').style.borderColor='',1000);
+}
+
+// ═══════════════════════════════════════════════════════════
+// STATS & CLOCK
+// ═══════════════════════════════════════════════════════════
+function startClock() {
+  setInterval(() => {
+    const now = new Date();
+    document.getElementById('sys-time').textContent = now.toLocaleTimeString();
+  }, 1000);
+}
+
+function updateStats() {
+  const up = Math.floor((Date.now()-S.startTime)/1000);
+  const m = String(Math.floor(up/60)).padStart(2,'0');
+  const s = String(up%60).padStart(2,'0');
+  document.getElementById('stat-uptime').textContent = m+':'+s;
+  document.getElementById('stat-mics').textContent = S.connectedMics.size;
+  renderTriads();
+}
+</script>
+</body>
+</html>
